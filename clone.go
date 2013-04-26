@@ -3,11 +3,10 @@ package git
 import "C"
 
 import (
-  "runtime"
+  "unsafe"
 )
 
 func Clone(url, path string) (*Repository, error) {
-  // Need both URL and path for this one.
   curl := C.CString(url)
   defer C.free(unsafe.Pointer(curl))
 
