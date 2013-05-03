@@ -7,10 +7,15 @@ git_checkout_opts git_checkout_opts_init() {
 	git_checkout_opts ret = GIT_CHECKOUT_OPTS_INIT;
 	return ret;
 }
+git_clone_options git_clone_options_init() {
+	git_clone_options ret = GIT_CLONE_OPTIONS_INIT;
+	return ret;
+}
 */
 import "C"
 import (
 	"os"
+	"unsafe"
 )
 
 type CheckoutStrategy uint
@@ -42,6 +47,34 @@ type CheckoutOpts struct {
 	FileOpenFlags  int				// Default is O_CREAT | O_TRUNC | O_WRONLY
 }
 
+type CloneOpts struct {
+	// The name given to the "origin" remote. The default is "origin"
+	RemoteName string
+
+	// The URL to be used for pushing. The default is the fetch URL
+	PushURL string
+
+	// The fetch specification to be used for pushing.
+	PushSpec string
+
+	// The callback to be used if credentials are required furing the initial fetch.
+	// CredAcquire func(cred *C.git_cred, url, usernameFromURL, string, allowedTypes uint, payload interface{}) int
+
+	// A custom transport to be used for the initial fetch. NULL means it will be
+	// autodetected from the URL.
+	// Transport *C.git_transport
+
+	// The nameo f hte branch to checkout. NULL means use the remote's HEAD.
+	CheckoutBranch string
+
+	Checkout CheckoutOpts
+
+	// TODO: Add support for the following.
+
+	// RemoteCallbacks
+	// RemoteAutotag
+}
+
 // Convert the CheckoutOpts struct to the corresponding C-struct
 func populateCheckoutOpts(ptr *C.git_checkout_opts, opts *CheckoutOpts) {
 	*ptr = C.git_checkout_opts_init()
@@ -52,6 +85,35 @@ func populateCheckoutOpts(ptr *C.git_checkout_opts, opts *CheckoutOpts) {
 	ptr.disable_filters = cbool(opts.DisableFilters)
 	ptr.dir_mode = C.uint(opts.DirMode.Perm())
 	ptr.file_mode = C.uint(opts.FileMode.Perm())
+}
+
+func populateCloneOptions(ptr *C.git_clone_options, opts *CloneOpts) {
+	ptr.version = 1
+
+	checkout := C.git_checkout_opts_init()
+	populateCheckoutOpts(&checkout, &opts.Checkout)
+	ptr.checkout_opts = checkout
+}
+
+func Clone(url, path string, opts *CloneOpts) (*Repository, error) {
+	var copts C.git_clone_options
+	populateCloneOptions(&copts, opts)
+
+	rep := new(Repository)
+
+	curl := C.CString(url)
+	defer C.free(unsafe.Pointer(curl))
+
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+
+	ret := C.git_clone(&rep.ptr, curl, cpath, &copts)
+
+	if ret < 0 {
+		return nil, LastError()
+	}
+
+	return OpenRepository(url)
 }
 
 // Updates files in the index and the working tree to match the content of
